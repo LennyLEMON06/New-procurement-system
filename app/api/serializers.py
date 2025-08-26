@@ -82,6 +82,7 @@ class ProductSerializer(serializers.ModelSerializer):
         model = Product
         fields = '__all__'
 
+# Алкоголь
 class AlcoholProductSerializer(serializers.ModelSerializer):
     organization_name = serializers.CharField(source='organization.name', 
                                               read_only=True)
@@ -105,7 +106,7 @@ class SupplierTokenSerializer(serializers.ModelSerializer):
         model = SupplierToken
         fields = ['token', 'created_at']
 
-# Цены
+# Цены на продукты
 class PriceSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source='product.name', 
                                          read_only=True)
