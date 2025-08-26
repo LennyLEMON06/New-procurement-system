@@ -51,7 +51,7 @@ class IsPurchaserOrHigher(permissions.BasePermission):
             # Для Price/PriceAlcohol нужно проверять организацию продукта/алкоголя
         return False # По умолчанию запрещено
 
-# Оставим старые декораторы для совместимости или если они используются в других местах
+# Оставим старые декораторы для совместимости, они используются в других местах
 
 def admin_required(view_func):
     @wraps(view_func)
