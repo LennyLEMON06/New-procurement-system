@@ -294,3 +294,85 @@ class PriceAlcohol(models.Model):
     def save(self, *args, **kwargs):
         self.date_updated = timezone.now()
         super().save(*args, **kwargs)
+
+class PriceRequest(models.Model):
+    """
+    Модель для запросов цен от закупщиков к поставщикам.
+    """
+    STATUS_CHOICES = (
+        ('pending', 'Ожидает ответа'),
+        ('responded', 'Ответ получен'),
+        ('cancelled', 'Отменен'),
+    )
+    
+    purchaser = models.ForeignKey(
+        User, on_delete=models.CASCADE, 
+        limit_choices_to={'role__in': ['purchaser', 'chief_purchaser', 'admin']},
+        verbose_name="Закупщик"
+    )
+    supplier = models.ForeignKey(
+        Supplier, on_delete=models.CASCADE, 
+        verbose_name="Поставщик"
+    )
+    product = models.ForeignKey(
+        Product, on_delete=models.CASCADE, 
+        blank=True, null=True, 
+        verbose_name="Продукт"
+    )
+    alcohol = models.ForeignKey(
+        AlcoholProduct, on_delete=models.CASCADE, 
+        blank=True, null=True, 
+        verbose_name="Алкоголь"
+    )
+    message = models.TextField(
+        blank=True, null=True, 
+        verbose_name="Сообщение/Комментарий"
+    )
+    status = models.CharField(
+        max_length=20, 
+        choices=STATUS_CHOICES, 
+        default='pending',
+        verbose_name="Статус"
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True, 
+        verbose_name="Дата создания"
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True, 
+        verbose_name="Дата обновления"
+    )
+    
+    def clean(self):
+        super().clean()
+        # Проверяем, что указан ли продукт или алкоголь, но не оба
+        if not self.product and not self.alcohol:
+            raise ValidationError("Необходимо указать либо продукт, либо алкоголь.")
+        if self.product and self.alcohol:
+            raise ValidationError("Можно запросить цену либо на продукт, либо на алкоголь, но не на оба одновременно.")
+            
+        # Проверяем, что закупщик и поставщик принадлежат одной организации
+        if self.purchaser and self.supplier:
+            purchaser_orgs = []
+            if hasattr(self.purchaser, 'purchaser_profile'):
+                purchaser_orgs = list(self.purchaser.purchaser_profile.organizations.all())
+            else:
+                # Если у пользователя нет профиля, проверяем по его организации (если есть)
+                # или пропускаем проверку
+                pass
+                
+            if purchaser_orgs and self.supplier.organization not in purchaser_orgs:
+                raise ValidationError("Поставщик должен принадлежать одной из организаций закупщика.")
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+        
+    def __str__(self):
+        item = self.product.name if self.product else (self.alcohol.name if self.alcohol else "Не указан")
+        return f"Запрос цены: {item} от {self.purchaser} к {self.supplier}"
+        
+    class Meta:
+        verbose_name = 'Запрос цены'
+        verbose_name_plural = 'Запросы цен'
+        ordering = ['-created_at']

@@ -3,7 +3,8 @@ from django.contrib.auth.forms import UserCreationForm, UserChangeForm
 from django.core.exceptions import ValidationError
 from .models import (
     Organization, City, User, PurchaserProfile,
-    Product, AlcoholProduct, Supplier, Price, SupplierToken
+    Product, AlcoholProduct, Supplier, Price, 
+    SupplierToken, PriceRequest
 )
 from django.utils.translation import gettext_lazy as _
 import uuid
@@ -174,3 +175,85 @@ class PriceBulkForm(forms.Form):
             if hasattr(user, 'purchaser_profile'):
                 orgs = user.purchaser_profile.organizations.all()
                 self.fields['supplier'].queryset = Supplier.objects.filter(organization__in=orgs)
+
+class PriceRequestForm(forms.ModelForm):
+    """
+    Форма для создания/редактирования запроса цены.
+    Предназначена в первую очередь для внутреннего использования.
+    """
+    class Meta:
+        model = PriceRequest
+        # Исключаем поля, которые устанавливаются автоматически или требуют специальной логики
+        exclude = ('purchaser', 'created_at', 'updated_at') 
+        widgets = {
+            'message': forms.Textarea(attrs={'rows': 3, 'placeholder': 'Добавьте комментарий к запросу, если необходимо...'}),
+            'status': forms.Select(), # Если нужно разрешить редактирование статуса вручную
+        }
+
+    def __init__(self, *args, **kwargs):
+        # Передаем пользователя для фильтрации queryset'ов
+        self.user = kwargs.pop('user', None) 
+        super().__init__(*args, **kwargs)
+        
+        if self.user:
+            # Фильтруем поставщиков и товары в зависимости от прав пользователя
+            if self.user.role == 'admin':
+                # Админ видит всех
+                pass 
+            elif hasattr(self.user, 'purchaser_profile'):
+                profile = self.user.purchaser_profile
+                orgs = profile.organizations.all()
+                
+                # Фильтруем поставщиков и товары по организациям пользователя
+                self.fields['supplier'].queryset = Supplier.objects.filter(organization__in=orgs)
+                self.fields['product'].queryset = Product.objects.filter(organization__in=orgs)
+                self.fields['alcohol'].queryset = AlcoholProduct.objects.filter(organization__in=orgs)
+            else:
+                # Если профиля нет, оставляем пустые queryset'ы или обрабатываем иначе
+                self.fields['supplier'].queryset = Supplier.objects.none()
+                self.fields['product'].queryset = Product.objects.none()
+                self.fields['alcohol'].queryset = AlcoholProduct.objects.none()
+                
+        # Если форма редактируется (instance существует), можно ограничить редактируемые поля
+        if self.instance and self.instance.pk:
+            # Например, запретить изменение товара/алкоголя после создания
+            self.fields['product'].disabled = True
+            self.fields['alcohol'].disabled = True
+            self.fields['supplier'].disabled = True
+            
+            # Ограничиваем изменение статуса (например, нельзя вернуться из 'responded' в 'pending')
+            # Это логика может быть сложнее и лучше реализована в модели или представлении
+            # current_status = self.instance.status
+            # if current_status in ['responded', 'cancelled']:
+            #     self.fields['status'].disabled = True
+
+    def clean(self):
+        """
+        Кастомная валидация формы.
+        """
+        cleaned_data = super().clean()
+        product = cleaned_data.get('product')
+        alcohol = cleaned_data.get('alcohol')
+        supplier = cleaned_data.get('supplier')
+
+        # Проверка, что указан только один товар
+        if not product and not alcohol:
+            raise forms.ValidationError("Необходимо выбрать либо продукт, либо алкоголь.")
+        if product and alcohol:
+            raise forms.ValidationError("Можно выбрать только один товар (продукт или алкоголь).")
+            
+        # Проверка соответствия поставщика и товара по организации (если нужно)
+        # item = product or alcohol
+        # if item and supplier and item.organization != supplier.organization:
+        #     raise forms.ValidationError("Поставщик и товар должны принадлежать одной организации.")
+            
+        return cleaned_data
+
+# Форма для изменения статуса (например, для поставщика)
+class PriceRequestStatusForm(forms.ModelForm):
+    """
+    Форма только для изменения статуса запроса.
+    """
+    class Meta:
+        model = PriceRequest
+        fields = ('status',)

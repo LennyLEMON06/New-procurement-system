@@ -2,7 +2,8 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from .models import (
     Organization, City, User, PurchaserProfile, 
-    Product, AlcoholProduct, Supplier, SupplierToken, Price, PriceAlcohol
+    Product, AlcoholProduct, Supplier, SupplierToken, 
+    Price, PriceAlcohol, PriceRequest
 )
 from django.utils.translation import gettext_lazy as _
 from django.contrib.auth.forms import UserChangeForm, UserCreationForm
@@ -131,6 +132,82 @@ class PurchaserProfileAdmin(admin.ModelAdmin):
         return ", ".join([city.name for city in obj.cities.all()])
     display_cities.short_description = 'Города'
 
+# Админка для запросов цен
+class PriceRequestAdmin(admin.ModelAdmin):
+    list_display = (
+        'id', 'get_item_name', 'purchaser_name', 'supplier_name', 
+        'status', 'created_at', 'updated_at'
+    )
+    list_filter = (
+        'status', 'created_at', 'updated_at', 
+        OrganizationFilter, # Используем существующий фильтр по организации
+    )
+    search_fields = (
+        'purchaser__username', 'purchaser__first_name', 'purchaser__last_name',
+        'supplier__name', 'product__name', 'alcohol__name', 'message'
+    )
+    readonly_fields = ('created_at', 'updated_at', 'purchaser', 'supplier', 'product', 'alcohol')
+    # raw_id_fields = ('purchaser', 'supplier', 'product', 'alcohol') # Можно использовать для больших баз данных
+    
+    # Добавим действие для массовой отмены запросов
+    actions = ['cancel_requests']
+
+    def get_queryset(self, request):
+        """Оптимизируем запросы с помощью select_related."""
+        qs = super().get_queryset(request)
+        return qs.select_related('purchaser', 'supplier', 'product', 'alcohol')
+
+    def get_item_name(self, obj):
+        """Отображает имя продукта или алкоголя."""
+        if obj.product:
+            return obj.product.name
+        elif obj.alcohol:
+            return obj.alcohol.name
+        return "Не указан"
+    get_item_name.short_description = 'Товар'
+    get_item_name.admin_order_field = 'product__name' # Позволяет сортировать по этому полю
+
+    def purchaser_name(self, obj):
+        """Отображает имя закупщика."""
+        return obj.purchaser.get_full_name() or obj.purchaser.username
+    purchaser_name.short_description = 'Закупщик'
+    purchaser_name.admin_order_field = 'purchaser__username'
+
+    def supplier_name(self, obj):
+        """Отображает имя поставщика."""
+        return obj.supplier.name
+    supplier_name.short_description = 'Поставщик'
+    supplier_name.admin_order_field = 'supplier__name'
+
+    def has_add_permission(self, request):
+        """
+        Запрещает добавление через админку, так как это должно происходить через API.
+        """
+        return False # Или True, если администраторам нужно разрешить создание вручную
+
+    def has_change_permission(self, request, obj=None):
+        """
+        Разрешает изменение только администраторам.
+        """
+        return request.user.role == 'admin'
+
+    def has_delete_permission(self, request, obj=None):
+        """
+        Разрешает удаление только администраторам.
+        """
+        return request.user.role == 'admin'
+
+    def cancel_requests(self, request, queryset):
+        """
+        Действие админки: отменить выбранные запросы.
+        """
+        updated_count = queryset.filter(status='pending').update(status='cancelled')
+        self.message_user(
+            request, 
+            f"{updated_count} запрос(ов) успешно отменено."
+        )
+    cancel_requests.short_description = "Отменить выбранные запросы (ожидающие)"
+
 # Регистрация всех моделей
 admin.site.register(Organization)
 admin.site.register(City)
@@ -142,3 +219,4 @@ admin.site.register(Supplier, SupplierAdmin)
 admin.site.register(SupplierToken, SupplierTokenAdmin)
 admin.site.register(Price, PriceAdmin)
 admin.site.register(PriceAlcohol, PriceAlcoholAdmin)
+admin.site.register(PriceRequest, PriceRequestAdmin)
