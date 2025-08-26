@@ -1,0 +1,12 @@
+<!-- templates/home.html -->
+{% extends "base.html" %}
+{% block title %}Главная{% endblock %}
+{% block content %}
+<div class="text-center">
+    <h1>Добро пожаловать, {{ request.user.get_full_name|default:request.user.username }}!</h1>
+    <p>Роль: <strong>{{ request.user.get_role_display }}</strong></p>
+    <p>Телефон: {{ request.user.phone|default:"—" }}</p>
+    <hr>
+    <a href="{% url 'logout' %}" class="btn btn-outline-danger">Выйти</a>
+</div>
+{% endblock %}

@@ -1,0 +1,13 @@
+<!-- templates/organizations.html -->
+{% extends 'base.html' %}
+
+{% block title %}Organizations{% endblock %}
+
+{% block content %}
+    <h1>Organizations</h1>
+    <ul>
+        {% for organization in organizations %}
+            <li>{{ organization.name }}</li>
+        {% endfor %}
+    </ul>
+{% endblock %}
